@@ -2,223 +2,267 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
-import { 
-  Star, ArrowRight, Filter, Smartphone, 
-  ChevronDown, Search
+import { useEffect, useMemo, useState } from "react";
+import {
+  Search,
+  Smartphone,
+  Package,
+  Loader2,
+  AlertCircle,
+  Star,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
-const allPhones = [
-  {
-    id: 1,
-    name: "iPhone 13",
-    price: 180000,
-    storage: "128 Go",
-    color: "Minuit",
-    image: "/images/products/iphone1.jpg",
-    grade: "Grade A",
-    battery: "86%",
-  },
-  {
-    id: 2,
-    name: "iPhone 12",
-    price: 150000,
-    storage: "64 Go",
-    color: "Noir",
-    image: "/images/products/iphone2.jpg",
-    grade: "Grade A",
-    battery: "88%",
-  },
-  {
-    id: 3,
-    name: "iPhone 11",
-    price: 120000,
-    storage: "64 Go",
-    color: "Blanc",
-    image: "/images/products/iphone3.jpg",
-    grade: "Grade A",
-    battery: "90%",
-  },
-  {
-    id: 4,
-    name: "iPhone 13 Pro",
-    price: 220000,
-    storage: "128 Go",
-    color: "Graphite",
-    image: "/images/products/iphone4.jpg",
-    grade: "Grade A",
-    battery: "87%",
-  },
-];
+type Product = {
+  id: string;
+  name: string;
+  price: number | null;
+  storage: string | null;
+  color: string | null;
+  grade: string | null;
+  battery: string | null;
+  stock: number | null;
+  description: string | null;
+  images: string[] | null;
+  created_at: string;
+};
 
 export default function CataloguePage() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [selectedStorage, setSelectedStorage] = useState("Tous");
-  const [sortBy, setSortBy] = useState("popular");
-  const [showFilters, setShowFilters] = useState(false);
+  const [filterStorage, setFilterStorage] = useState("tous");
+  const [sortBy, setSortBy] = useState("recent");
 
-  const storages = ["Tous", "64 Go", "128 Go", "256 Go"];
+  const formatPrice = (n: number) => n.toLocaleString("fr-FR") + " F";
 
-  let filtered = allPhones.filter((phone) => {
-    const matchSearch = phone.name.toLowerCase().includes(search.toLowerCase());
-    const matchStorage = selectedStorage === "Tous" || phone.storage === selectedStorage;
-    return matchSearch && matchStorage;
-  });
+  useEffect(() => {
+    const load = async () => {
+      setError("");
+      try {
+        const supabase = createClient();
+        const { data, error: fetchError } = await supabase
+          .from("products")
+          .select(
+            "id, name, price, storage, color, grade, battery, stock, description, images, created_at"
+          )
+          .order("created_at", { ascending: false });
 
-  if (sortBy === "price-asc") {
-    filtered = [...filtered].sort((a, b) => a.price - b.price);
-  } else if (sortBy === "price-desc") {
-    filtered = [...filtered].sort((a, b) => b.price - a.price);
+        if (fetchError) throw fetchError;
+        setProducts((data || []) as Product[]);
+      } catch (err: unknown) {
+        console.error(err);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Impossible de charger le catalogue."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, []);
+
+  const storages = useMemo(() => {
+    const set = new Set(
+      products.map((p) => p.storage).filter(Boolean) as string[]
+    );
+    return Array.from(set);
+  }, [products]);
+
+  const filtered = useMemo(() => {
+    let list = [...products];
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(q) ||
+          p.storage?.toLowerCase().includes(q) ||
+          p.color?.toLowerCase().includes(q) ||
+          p.grade?.toLowerCase().includes(q)
+      );
+    }
+
+    if (filterStorage !== "tous") {
+      list = list.filter((p) => p.storage === filterStorage);
+    }
+
+    if (sortBy === "prix_asc") {
+      list.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+    } else if (sortBy === "prix_desc") {
+      list.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+    } else {
+      list.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    }
+
+    return list;
+  }, [products, search, filterStorage, sortBy]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+          <p className="text-sm text-gray-500">Chargement du catalogue...</p>
+        </div>
+      </div>
+    );
   }
-
-  const formatPrice = (price: number) => {
-    return price.toLocaleString("fr-FR") + " F";
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      
       <div className="bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
             Catalogue iPhone
           </h1>
-          <p className="text-sm text-gray-500">
-            {filtered.length} modèle{filtered.length > 1 ? "s" : ""} disponible{filtered.length > 1 ? "s" : ""}
+          <p className="text-sm text-gray-500 mt-1">
+            {products.length} produit(s) • Reconditionnés Grade A
           </p>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        
+        {error && (
+          <div className="mb-5 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {/* Filtres */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Rechercher un iPhone..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              placeholder="Rechercher un iPhone..."
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
 
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="sm:hidden flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium"
+          <select
+            value={filterStorage}
+            onChange={(e) => setFilterStorage(e.target.value)}
+            className="px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
-            <Filter className="w-4 h-4" />
-            Filtres
-          </button>
-
-          <div className="relative">
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="appearance-none w-full sm:w-auto pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="popular">Plus populaires</option>
-              <option value="price-asc">Prix croissant</option>
-              <option value="price-desc">Prix décroissant</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        <div className={`${showFilters ? "block" : "hidden"} sm:block mb-6`}>
-          <div className="flex flex-wrap gap-2">
-            {storages.map((storage) => (
-              <button
-                key={storage}
-                onClick={() => setSelectedStorage(storage)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
-                  selectedStorage === storage
-                    ? "bg-primary-500 text-white shadow-sm"
-                    : "bg-white text-gray-600 border border-gray-200 hover:border-primary-300"
-                }`}
-              >
-                {storage}
-              </button>
+            <option value="tous">Tous les stockages</option>
+            {storages.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
             ))}
-          </div>
+          </select>
+
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="recent">Plus récents</option>
+            <option value="prix_asc">Prix croissant</option>
+            <option value="prix_desc">Prix décroissant</option>
+          </select>
         </div>
 
         {filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <Smartphone className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 text-sm">Aucun iPhone trouvé</p>
-            <button
-              onClick={() => {
-                setSearch("");
-                setSelectedStorage("Tous");
-              }}
-              className="mt-3 text-primary-600 text-sm font-medium"
-            >
-              Réinitialiser les filtres
-            </button>
+          <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+            <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm font-semibold text-gray-600">
+              Aucun produit trouvé
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              {products.length === 0
+                ? "Ajoute des produits depuis l’admin."
+                : "Modifie ta recherche ou tes filtres."}
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-            {filtered.map((phone) => (
-              <Link
-                href={`/produit/${phone.id}`}
-                key={phone.id}
-                className="group bg-white rounded-xl overflow-hidden border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.1)] transition-all active:scale-[0.98]"
-              >
-                <div className="relative aspect-[3/4] overflow-hidden bg-gray-50">
-                  <Image
-                    src={phone.image}
-                    alt={phone.name}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-500"
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                  />
-                  <div className="absolute top-2 left-2 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-md text-[10px] font-semibold text-primary-700 shadow-sm">
-                    {phone.grade}
-                  </div>
-                </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {filtered.map((product) => {
+              const inStock = Number(product.stock || 0) > 0;
+              const img =
+                product.images?.[0] || "/images/products/iphone1.jpg";
 
-                <div className="p-2.5 sm:p-3.5">
-                  <div className="flex justify-between items-start gap-1 mb-0.5">
-                    <h3 className="text-xs sm:text-sm font-bold text-gray-900 truncate">
-                      {phone.name}
-                    </h3>
-                    <div className="flex items-center gap-0.5 text-accent-400 shrink-0">
-                      <Star className="w-3 h-3 fill-current" />
-                      <span className="text-[10px]">4.8</span>
+              return (
+                <Link
+                  key={product.id}
+                  href={`/produit/${product.id}`}
+                  className="group bg-white rounded-xl overflow-hidden border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.1)] transition-all active:scale-[0.98]"
+                >
+                  <div className="relative aspect-[3/4] overflow-hidden bg-gray-50">
+                    {/* Si images externes (Supabase Storage), utilise <img> */}
+                    {img.startsWith("http") ? (
+                      <img
+                        src={img}
+                        alt={product.name}
+                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <Image
+                        src={img}
+                        alt={product.name}
+                        fill
+                        className="object-cover group-hover:scale-105 transition-transform duration-500"
+                        sizes="(max-width: 640px) 50vw, 25vw"
+                      />
+                    )}
+
+                    {!inStock && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <span className="text-white text-xs font-semibold bg-red-500 px-2 py-1 rounded-lg">
+                          Rupture
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-2.5 sm:p-3">
+                    <div className="flex justify-between items-start gap-1">
+                      <h3 className="text-xs sm:text-sm font-bold text-gray-900 truncate">
+                        {product.name}
+                      </h3>
+                      <div className="flex items-center gap-0.5 text-accent-400 shrink-0">
+                        <Star className="w-3 h-3 fill-current" />
+                        <span className="text-[10px]">4.8</span>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] text-gray-500 mt-0.5 mb-1.5 truncate">
+                      {product.storage || "—"}
+                      {product.grade ? ` • ${product.grade}` : ""}
+                      {product.color ? ` • ${product.color}` : ""}
+                    </p>
+
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-sm font-bold text-primary-600">
+                        {formatPrice(Number(product.price || 0))}
+                      </p>
+                      <span
+                        className={`text-[10px] font-medium ${
+                          inStock ? "text-green-600" : "text-red-500"
+                        }`}
+                      >
+                        {inStock
+                          ? `${product.stock} en stock`
+                          : "Épuisé"}
+                      </span>
                     </div>
                   </div>
-
-                  <p className="text-[10px] sm:text-xs text-gray-500 mb-1">
-                    {phone.storage} • {phone.color}
-                  </p>
-
-                  <p className="text-[10px] text-gray-400 mb-2">
-                    Batterie {phone.battery}
-                  </p>
-
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm sm:text-base font-bold text-primary-600">
-                      {formatPrice(phone.price)}
-                    </p>
-                    <span className="text-[10px] font-medium text-accent-500 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      Voir <ArrowRight className="w-3 h-3" />
-                    </span>
-                  </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
-
-        <div className="mt-8 bg-primary-50 border border-primary-100 rounded-2xl p-4 sm:p-5 text-center">
-          <p className="text-sm text-primary-800 font-medium mb-1">
-            Paiement en plusieurs fois disponible
-          </p>
-          <p className="text-xs text-primary-600">
-            Payez 50% + caution maintenant, le reste en 2 à 3 mois
-          </p>
-        </div>
       </div>
     </div>
   );

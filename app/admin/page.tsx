@@ -442,6 +442,12 @@ export default function AdminDashboard() {
             </Link>
           ))}
         </div>
+<Link
+  href="/admin/user"
+  className="grid lg:grid-cols-3 gap-6 mb-8"
+>
+  Utilisateurs
+</Link>
 
         <div className="grid lg:grid-cols-3 gap-6 mb-8">
           {/* DOSSIERS RÉCENTS */}
